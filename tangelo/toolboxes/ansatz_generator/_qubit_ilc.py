@@ -54,52 +54,58 @@ def construct_acs(dis, n_qubits):
     while not good_sln:
         gen_idxs, ilc_gens = [idx for idx in range(n_dis_groups) if idx not in bad_sln_idxs], []
         n_gens = len(gen_idxs)
-        ng2, ngnq = n_gens * (n_gens + 1) // 2, n_gens * n_qubits
+        ng2, ngnq = n_gens*(n_gens+1)//2, n_gens*n_qubits
 
         # a_mat --> A and z_vec --> z in Appendix A, Refs. 1 & 2.
-        a_mat, z_vec, one_vec = np.zeros((ng2, ngnq)), np.zeros(ngnq), np.ones((ng2, 1))
+        a_mat, x_vec = np.zeros((ng2, ngnq)).astype('int8'), np.zeros(ngnq).astype('int8')
         for idx, gen_idx in enumerate(gen_idxs):
             gen = dis[gen_idx]
             for term in gen.terms:
                 for paulis in term:
                     p_idx, pauli = paulis
                     if 'X' in pauli or 'Y' in pauli:
-                        z_vec[idx * n_qubits + p_idx] = 1.
+                        x_vec[idx*n_qubits+p_idx] = 1
 
         # Form the rectangular matrix-vector product A * z (Appendix A, Refs. 1 & 2).
         rowdx = 0
         for i in range(n_gens):
-            a_mat[rowdx, i * n_qubits:(i+1) * n_qubits] = z_vec[i * n_qubits:(i+1) * n_qubits]
+            idx1 = i*n_qubits
+            idx2 = (i+1)*n_qubits
+            a_mat[rowdx, idx1:idx2] = x_vec[idx1:idx2]
             rowdx += 1
-            for j in range(i + 1, n_gens):
-                a_mat[rowdx, i * n_qubits:(i+1) * n_qubits] = z_vec[j * n_qubits:(j+1) * n_qubits]
-                a_mat[rowdx, j * n_qubits:(j+1) * n_qubits] = z_vec[i * n_qubits:(i+1) * n_qubits]
+            for j in range(i+1, n_gens):
+                jdx1 = j*n_qubits
+                jdx2 = (j+1)*n_qubits
+                a_mat[rowdx, idx1:idx2] = x_vec[jdx1:jdx2]
+                a_mat[rowdx, jdx1:jdx2] = x_vec[idx1:idx2]
                 rowdx += 1
 
         # Solve A * z = b --> here b = 1
-        z_sln = gauss_elim_over_gf2(a_mat, b_vec=one_vec)
+        z_vec = gauss_elim_over_gf2(a_mat, b_vec=np.ones((ng2, 1)).astype('int8'))
 
         # Check solution: odd # of Y ops, at least two flip indices, and mutually anticommutes
         for i in range(n_gens):
             n_flip, n_y, gen_idx, gen_tup = 0, 0, gen_idxs[i], tuple()
             for j in range(n_qubits):
                 gen, idx = None, i * n_qubits + j
-                if z_vec[idx] == 1.:
+                if x_vec[idx] == 1.:
                     n_flip += 1
-                    if z_sln[idx] == 0.:
+                    if z_vec[idx] == 0.:
                         gen = (j, 'X')
                     else:
                         gen = (j, 'Y')
                         n_y += 1
                 else:
-                    if z_sln[idx] == 1.:
+                    if z_vec[idx] == 1.:
                         gen = (j, 'Z')
                 if gen:
                     gen_tup += (gen, )
+
             # check number of flip indices and number of Y Pauli ops
             if n_flip > 1 and n_y % 2 == 1:
                 gen_i = QubitOperator(gen_tup, 1.)
                 good_sln = True
+
                 # check mutual anticommutativity of each new ILC generator with all the rest
                 for gen_j in ilc_gens:
                     if gen_i * gen_j != -1. * gen_j * gen_i:
@@ -148,20 +154,17 @@ def gauss_elim_over_gf2(a_mat, b_vec=None):
 
     # remove duplicate rows if they exist
     _, row_idxs = np.unique([tuple(row) for row in a_mat], axis=0, return_index=True)
-    a_mat_new = a_mat[np.sort(row_idxs)]
-    if a_mat_new.shape[0] != a_mat.shape[0]:
+    if len(row_idxs.tolist()) != n_rows:
         warnings.warn("Linear dependency detected in input matrix: redundant rows deleted.", RuntimeWarning)
-    a_mat = a_mat_new
+        a_mat = a_mat[np.sort(row_idxs)]
+        n_rows = a_mat.shape[0]
 
     # remove rows of all 0s if they exist
-    del_idxs = []
-    for i in range(a_mat.shape[0]):
-        if (a_mat[i][:] == 0).all():
-            del_idxs.append(i)
+    del_idxs = [i for i in range(n_rows) if (a_mat[i] == 0).all()]
     if del_idxs:
         warnings.warn("Linear dependency detected in input matrix: rows of zeros deleted.", RuntimeWarning)
-    a_mat = np.delete(a_mat, obj=del_idxs, axis=0)
-    n_rows = a_mat.shape[0]
+        a_mat = np.delete(a_mat, obj=del_idxs, axis=0)
+        n_rows -= len(del_idxs)
 
     # begin gaussian elimination algorithm
     z_sln, piv_idx = [-1]*(n_cols-1), 0

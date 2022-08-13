@@ -73,11 +73,15 @@ class ILC(Ansatz):
         max_ilc_gens (int or None): Maximum number of generators allowed in the ansatz. If None,
             one generator from each DIS group is selected. If int, then min(|DIS|, max_ilc_gens)
             generators are selected in order of decreasing |dEILC/dtau|. Default, None.
+        gen_choice (str): Determines how to select generators from each DIS group. Available
+            options are "first", "last", and "random", which selects the first, last, or a random
+            generator from each DIS group. Default, "first".
+        verbose (bool): Verbosity flag for the ILC ansatz class. Default, False.
     """
 
     def __init__(self, molecule, mapping="jw", up_then_down=False, acs=None,
                  qmf_circuit=None, qmf_var_params=None, qubit_ham=None, ilc_tau_guess=1e-2,
-                 deilc_dtau_thresh=1e-3, max_ilc_gens=None):
+                 deilc_dtau_thresh=1e-3, max_ilc_gens=None, gen_choice="first", verbose=False):
 
         if not molecule and not (isinstance(molecule, SecondQuantizedMolecule) and isinstance(molecule, dict)):
             raise ValueError("An instance of SecondQuantizedMolecule or a dict is required for "
@@ -119,6 +123,9 @@ class ILC(Ansatz):
             raise ValueError("The number of QMF variational parameters must be 2 * n_qubits.")
         self.n_qmf_params = 2 * self.n_qubits
         self.qmf_circuit = qmf_circuit
+
+        self.gen_choice = gen_choice
+        self.verbose = verbose
 
         self.acs = acs
         self.ilc_tau_guess = ilc_tau_guess
@@ -223,8 +230,7 @@ class ILC(Ansatz):
 
     def update_var_params(self, var_params):
         """Shortcut: set value of variational parameters in the existing ansatz circuit member.
-        Preferable to rebuilding your circuit from scratch, which can be an involved process.
-        """
+        Preferable to rebuilding your circuit from scratch, which can be an involved process."""
 
         # Update the ILC variational parameters
         self.set_var_params(var_params)
@@ -241,18 +247,16 @@ class ILC(Ansatz):
                        else self.ilc_circuit
 
     def _get_ilc_generators(self):
-        """ Prepares the ILC ansatz by purifying the QMF state, constructing the ACS,
-        and selecting representative generators from the top candidate ACS groups. """
+        """Prepares the ILC ansatz by purifying the QMF state, constructing the ACS,
+        and selecting representative generators from the top candidate ACS groups."""
 
         if not self.acs:
             pure_var_params = purify_qmf_state(self.qmf_var_params, self.n_spinorbitals, self.n_electrons,
                                                self.mapping, self.up_then_down, self.spin)
-            self.dis = construct_dis(self.qubit_ham, pure_var_params, self.deilc_dtau_thresh)
-            self.acs = construct_acs(self.dis, self.n_qubits)
-            if self.max_ilc_gens:
-                self.n_ilc_params = min(len(self.acs), self.max_ilc_gens)
-                del self.acs[self.n_ilc_params:]
-            else:
-                self.n_ilc_params = len(self.acs)
+            self.dis = construct_dis(self.qubit_ham, pure_var_params, self.deilc_dtau_thresh, self.gen_choice, self.verbose)
+            self.max_ilc_gens = min(len(self.dis), self.max_ilc_gens) if self.max_ilc_gens\
+                                else len(self.dis)
+            self.acs = construct_acs(self.dis[:self.max_ilc_gens], self.n_qubits)
+            self.n_ilc_params = min(len(self.acs), self.max_ilc_gens)
         else:
             self.n_ilc_params = len(self.acs)

@@ -30,6 +30,7 @@ Refs:
         J. Chem. Theory Comput. 2020, 16, 2, 1055–1063.
 """
 
+from random import choice
 from math import sin, cos
 from itertools import combinations
 
@@ -39,7 +40,7 @@ from tangelo.toolboxes.operators.operators import QubitOperator
 from tangelo.toolboxes.ansatz_generator._qubit_mf import get_op_expval
 
 
-def construct_dis(qubit_ham, pure_var_params, deqcc_dtau_thresh):
+def construct_dis(qubit_ham, pure_var_params, deqcc_dtau_thresh, gen_choice, verbose):
     """ Construct the direct interaction set (DIS) of QCC generators as follows:
     1. Identify the flip indices of all Hamiltonian terms and group terms by flip indices.
     2. Construct a representative generator using flip indices from each candidate DIS group
@@ -54,6 +55,10 @@ def construct_dis(qubit_ham, pure_var_params, deqcc_dtau_thresh):
         pure_var_params (numpy array of float): A purified QMF variational parameter set.
         deqcc_dtau_thresh (float): Threshold for |dEQCC/dtau| so that a candidate group is added
             to the DIS if |dEQCC/dtau| >= deqcc_dtau_thresh for a generator.
+        gen_choice (str): Determines how to select generators from each DIS group. Available
+            options are "first", "last", and "random", which selects the first, last, or a random
+            generator from each DIS group.
+        verbose (bool): Verbosity flag for the QCC ansatz class.
 
     Returns:
         list of list: the DIS of QCC generators.
@@ -62,12 +67,22 @@ def construct_dis(qubit_ham, pure_var_params, deqcc_dtau_thresh):
     # Use a qubit Hamiltonian and purified QMF parameter set to construct the DIS
     dis, dis_groups = [], get_dis_groups(qubit_ham, pure_var_params, deqcc_dtau_thresh)
     if dis_groups:
-        for dis_group in dis_groups:
+        if verbose:
+            if gen_choice in ("first", "last"):
+                print(f"Selecting the {gen_choice} generator from each DIS group for the QCC ansatz.")
+            elif gen_choice == "random":
+                print("Randomly selecting a generator from each DIS group for the QCC ansatz.")
+        for i, dis_group in enumerate(dis_groups, 1):
             dis_group_idxs = [int(idxs) for idxs in dis_group[0].split(" ")]
             dis_group_gens = get_gens_from_idxs(dis_group_idxs)
-            # for now just grab the first generator; eventually add capability to
-            # allow the user to select which generators to use.
-            dis.append(dis_group_gens[0])
+            if gen_choice == "first":
+                dis.append(dis_group_gens[0])
+            elif gen_choice == "last":
+                dis.append(dis_group_gens[-1])
+            elif gen_choice == "random":
+                dis.append(choice(dis_group_gens))
+            if verbose:
+                print(f"DIS Group # {i}: generator = {dis[-1]}; gradient = {dis_group[1]}")
     else:
         raise ValueError(f"The DIS is empty: there are no candidate DIS groups where "
                          f"|dEQCC/dtau| >= {deqcc_dtau_thresh} a.u. Terminate simulation.\n")
