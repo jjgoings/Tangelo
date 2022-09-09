@@ -27,6 +27,24 @@ mol_H2_sto3g = SecondQuantizedMolecule(xyz_H2, q=0, spin=0, basis="sto-3g")
 mol_H2_321g = SecondQuantizedMolecule(xyz_H2, q=0, spin=0, basis="3-21g")
 
 
+# Linear trihydrogen
+xyz_H3_linear = [
+    ("H", [0.0, 0.0, 0.0]),
+    ("H", [0.0, 0.5, 0.0]),
+    ("H", [0., 1., 0.0])
+]
+mol_H3_linear_sto3g = SecondQuantizedMolecule(xyz_H3_linear, q=0, spin=1, basis="sto-3g")
+
+
+# Triangular trihydrogen
+xyz_H3_triangular = [
+    ("H", [0.0, 0.0, 0.0]),
+    ("H", [0.0, 1, 0.0]),
+    ("H", [0.866, 0.5, 0.0])
+]
+mol_H3_triangular_sto3g = SecondQuantizedMolecule(xyz_H3_triangular, q=0, spin=1, basis="sto-3g")
+
+
 # Tetrahydrogen.
 xyz_H4 = [
     ("H", [0.7071067811865476, 0.0, 0.0]),

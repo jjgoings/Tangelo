@@ -245,8 +245,8 @@ class QCC(Ansatz):
         # If qubit_op terms have changed, rebuild circuit
         if set(self.pauli_to_angles_mapping.keys()) != set(qubit_op.terms.keys()):
             self.build_circuit(var_params)
-        # Otherwise update variational gates directly
         else:
+            # Otherwise update variational gates directly
             for pauli_word, coef in qubit_op.terms.items():
                 gate_index = self.pauli_to_angles_mapping[pauli_word]
                 gate_param = 2. * coef if coef >= 0. else 4 * np.pi + 2 * coef
@@ -262,10 +262,8 @@ class QCC(Ansatz):
             pure_var_params = purify_qmf_state(self.qmf_var_params, self.n_spinorbitals, self.n_electrons,
                                                self.mapping, self.up_then_down, self.spin)
             self.dis = construct_dis(self.qubit_ham, pure_var_params, self.deqcc_dtau_thresh, self.gen_choice, self.verbose)
-            if self.max_qcc_gens:
-                self.n_qcc_params = min(len(self.dis), self.max_qcc_gens)
-                del self.dis[self.n_qcc_params:]
-            else:
-                self.n_qcc_params = len(self.dis)
-        else:
-            self.n_qcc_params = len(self.dis)
+        self.n_qcc_params = min(len(self.dis), self.max_qcc_gens) if self.max_qcc_gens else len(self.dis)
+        self.dis = self.dis[:self.n_qcc_params]
+
+        if self.verbose:
+            print(f"The top {self.n_qcc_params} generators for the QCC ansatz:\n{self.dis}")

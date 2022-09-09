@@ -122,7 +122,7 @@ def do_jkmn_transform(vector):
     Returns:
         numpy array of int: qubit-encoded occupation vector.
     """
-    return jkmn_prep_vector(vector)
+    return np.array(jkmn_prep_vector(vector))
 
 
 def get_mapped_vector(vector, mapping, up_then_down=False):

@@ -254,9 +254,8 @@ class ILC(Ansatz):
             pure_var_params = purify_qmf_state(self.qmf_var_params, self.n_spinorbitals, self.n_electrons,
                                                self.mapping, self.up_then_down, self.spin)
             self.dis = construct_dis(self.qubit_ham, pure_var_params, self.deilc_dtau_thresh, self.gen_choice, self.verbose)
-            self.max_ilc_gens = min(len(self.dis), self.max_ilc_gens) if self.max_ilc_gens\
-                                else len(self.dis)
-            self.acs = construct_acs(self.dis[:self.max_ilc_gens], self.n_qubits)
+            self.max_ilc_gens = min(len(self.dis), self.max_ilc_gens) if self.max_ilc_gens else len(self.dis)
+            self.acs = construct_acs(self.dis, self.n_qubits)
             self.n_ilc_params = min(len(self.acs), self.max_ilc_gens)
         else:
             self.n_ilc_params = len(self.acs)
