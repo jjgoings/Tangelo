@@ -87,6 +87,7 @@ def construct_dis(qubit_ham, pure_var_params, deqcc_dtau_thresh, gen_choice, ver
                          f"|dEQCC/dtau| >= {deqcc_dtau_thresh} a.u. Terminate simulation.\n")
     return dis
 
+
 def get_dis_groups(qubit_ham, pure_var_params, deqcc_dtau_thresh):
     """Construct unique DIS groups characterized by the flip indices and |dEQCC/dtau|.
 
@@ -103,21 +104,21 @@ def get_dis_groups(qubit_ham, pure_var_params, deqcc_dtau_thresh):
     # Get the flip indices from qubit_ham and compute the gradient dEQCC/dtau
     qham_gen = ((qham_items[0], (qham_items[1], pure_var_params))
                  for qham_items in qubit_ham.terms.items())
-    flip_data = list(filter(None, (get_flip_idxs_deriv(q_gen[0], *q_gen[1]) for q_gen in qham_gen)))
+    flip_idxs = list(filter(None, (get_idxs_deriv(q_gen[0], *q_gen[1]) for q_gen in qham_gen)))
 
     # Group Hamiltonian terms with the same flip indices and sum of the signed dEQCC/tau values
-    candidates = {}
-    for data in flip_data:
-        idx = "".join(f"{i} " for i in data[0]).removesuffix(" ")
-        deriv_old = candidates.get(idx, (0., data[0]))
-        candidates[idx] = (data[1] + deriv_old[0], data[0])
+    candidates = dict()
+    for idxs in flip_idxs:
+        deriv_old = candidates.get(idxs[0], 0.)
+        candidates[idxs[0]] = idxs[1] + deriv_old
 
     # Return a sorted list of flip indices and signed dEQCC/dtau values for each DIS group
-    dis_groups = [data for data in candidates.values() if abs(data[0]) >= deqcc_dtau_thresh]
-    return sorted(dis_groups, key=lambda deriv: abs(deriv[0]), reverse=True)
+    dis_groups = [idxs_deriv for idxs_deriv in candidates.items()
+                  if abs(idxs_deriv[1]) >= deqcc_dtau_thresh]
+    return sorted(dis_groups, key=lambda deriv: abs(deriv[1]), reverse=True)
 
 
-def get_flip_idxs_deriv(qham_term, *qham_qmf_data):
+def get_idxs_deriv(qham_term, *qham_qmf_data):
     """Find the flip indices of a qubit Hamiltonian term by identifying the indices
     of any X and Y operators that are present. A representative generator is then
     built with a Pauli Y operator acting on the first flip index and then Pauli X
@@ -134,23 +135,22 @@ def get_flip_idxs_deriv(qham_term, *qham_qmf_data):
             dEQCC/dtau (float) if at least two flip indices were found. Otherwise return None.
     """
 
-    # find the flip indices: X and Y Pauli operator indices
-    flip_idxs = [term[0] for term in qham_term if term[1] == "X" or term[1] == "Y"]
-
-    # at least two flip indices are required for each generator
-    gen_tup = ()
-    if len(flip_idxs) > 1:  
-        # compute the gradient with a generator comprising one Y Pauli op and the rest X
-        for idx in flip_idxs:
-            gen = (idx, "Y") if len(gen_tup) < 1 else (idx, "X")
+    coef, pure_params = qham_qmf_data
+    idxs, gen_tup, idxs_deriv = "", tuple(), None
+    for pauli_factor in qham_term:
+        # The indices of X and Y operators are flip indices
+        idx, pauli_op = pauli_factor
+        if "X" in pauli_op or "Y" in pauli_op:
+            gen = (idx, "Y") if idxs == "" else (idx, "X")
+            idxs = idxs + f" {idx}" if idxs != "" else f"{idx}"
             gen_tup += (gen, )
-        # |-.5j <[H, P]>| = Im([H * P])
-        hp_comm = QubitOperator(qham_term, qham_qmf_data[0]) * QubitOperator(gen_tup, 1.)
-        deriv = get_op_expval(hp_comm, qham_qmf_data[1])
-        flip_idxs_deriv = (flip_idxs, abs(deriv))
-    else:
-        flip_idxs_deriv = None
-    return flip_idxs_deriv
+    # Generators must have at least two flip indices
+    if len(gen_tup) > 1:
+        qham_gen_comm = QubitOperator(qham_term, -1j * coef)
+        qham_gen_comm *= QubitOperator(gen_tup, 1.)
+        deriv = get_op_expval(qham_gen_comm, pure_params).real
+        idxs_deriv = (idxs, deriv)
+    return idxs_deriv
 
 
 def get_gens_from_idxs(group_idxs):
@@ -193,7 +193,7 @@ def build_qcc_qubit_op(dis_gens, taus):
 
     qubit_op = QubitOperator.zero()
     for i, dis_gen in enumerate(dis_gens):
-        qubit_op -= 0.5*taus[i]*dis_gen
+        qubit_op -= 0.5 * taus[i] * dis_gen
     qubit_op.compress()
     return qubit_op
 
@@ -217,6 +217,6 @@ def qcc_op_dress(qubit_op, dis_gens, taus):
     """
 
     for i, gen in enumerate(dis_gens):
-        qubit_op += .5*((1. - cos(taus[i]))*gen - 1j*sin(taus[i]))*commutator(qubit_op, gen)
+        qubit_op += .5 * ((1. - cos(taus[i])) * gen - 1j * sin(taus[i])) * commutator(qubit_op, gen)
     qubit_op.compress()
     return qubit_op
